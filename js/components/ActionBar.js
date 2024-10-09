@@ -11,6 +11,16 @@ export default class ActionBar {
     }
     view.ui.add(this.widgets.fullscreen, "top-right")
     document.querySelector("calcite-action-bar").addEventListener("click", this.handleActionBarClick)
+
+    this.actionBarExpanded = false
+    this.view.padding = {left: 49}
+
+    document.addEventListener("calciteActionBarToggle", event => {
+      this.actionBarExpanded = !this.actionBarExpanded;
+      this.view.padding = {
+        left: this.actionBarExpanded ? 150 : 49
+      };
+    });
   }
 
   handleActionBarClick = ({ target }) => { // Use fat arrow function or this will point at the clicked html element

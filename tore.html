@@ -1,0 +1,244 @@
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>MediaLayer med FeatureLayer og TimeSlider | ArcGIS Maps SDK for JavaScript</title>
+   
+      <link rel="stylesheet" href="https://js.arcgis.com/4.30/esri/themes/dark/main.css" />
+  <script src="https://js.arcgis.com/4.30/"></script>
+   
+      <style>
+          html, body, #viewDiv {
+              height: 100%;
+              width: 100%;
+              margin: 0;
+              padding: 0;
+          }
+   
+          #timeSliderDiv {
+              position: absolute;
+              bottom: 30px;
+              left: 10px;
+              width: 90%;
+              z-index: 99;
+          }
+  </style>
+  </head>
+   
+  <body>
+  <div id="viewDiv"></div>
+  <div id="timeSliderDiv"></div> <!-- TimeSlider -->
+   
+      <script>
+          require([
+              "esri/Map",
+              "esri/views/MapView",
+              "esri/layers/MediaLayer",
+              "esri/layers/FeatureLayer",
+              "esri/layers/GroupLayer",
+              "esri/layers/support/VideoElement",
+              "esri/layers/support/ExtentAndRotationGeoreference",
+              "esri/widgets/LayerList",
+              "esri/widgets/Legend", // Import Legend widget
+              "esri/geometry/Extent",
+              "esri/widgets/Slider",
+              "esri/widgets/TimeSlider"
+          ], (
+              Map, MapView, MediaLayer, FeatureLayer, GroupLayer, VideoElement, ExtentAndRotationGeoreference, LayerList, Legend, Extent, Slider, TimeSlider
+          ) => {
+   
+              // Create a video element with georeference
+              const element = new VideoElement({
+                  video: "https://ts.geodata.no/video/rest/services/HurricaneHarvey/VideoServer/0/original",
+                  georeference: new ExtentAndRotationGeoreference({
+                      extent: new Extent({
+                          xmin: -150,
+                          ymin: 1,
+                          xmax: 20,
+                          ymax: 80,
+                          spatialReference: {
+                              wkid: 4326
+                          }
+                      })
+                  })
+              });
+   
+              // Add the video to a MediaLayer
+              const mediaLayer = new MediaLayer({
+                  source: [element],
+                  title: "2017 Hurricane Harvey video",
+                  copyright: "NASA's Goddard Space Flight Center"
+              });
+   
+              // Time-enabled FeatureLayer for power outages
+              const powerOutageLayer = new FeatureLayer({
+                  url: "https://services.arcgis.com/2JyTvMWQSnM2Vi8q/arcgis/rest/services/PowerOutage/FeatureServer/0",
+                  title: "Houston Strømbrudd",
+                  visible: true,
+                  outFields: ["*"]
+              });
+   
+              // FeatureLayer for Texas outages
+              const texasOutageLayer = new FeatureLayer({
+                  url: "https://services3.arcgis.com/qIYk15xMDfmQQUsY/arcgis/rest/services/Outage_Texas/FeatureServer/0",
+                  title: "Strømtilstand før orkan",
+                  visible: true,
+                  outFields: ["*"]
+              });
+   
+              // FeatureLayer for Hurricane Track
+              const hurricaneTrackLayer = new FeatureLayer({
+                  url: "https://services3.arcgis.com/qIYk15xMDfmQQUsY/arcgis/rest/services/HurricaneTrack/FeatureServer",
+                  title: "Orkanbane",
+                  visible: true
+              });
+   
+              // New Observed Wind Swath Layer
+              const windSwathLayer = new FeatureLayer({
+                  url: "https://services.arcgis.com/2JyTvMWQSnM2Vi8q/arcgis/rest/services/WindSwath/FeatureServer",
+                  title: "Observert vindbane",
+                  visible: true,
+                  outFields: ["*"]
+              });
+   
+              // GroupLayer for combining layers
+              const layerGroup = new GroupLayer({
+                  title: "Tidsinnstilte datalag",
+                  layers: [windSwathLayer, hurricaneTrackLayer, texasOutageLayer, powerOutageLayer],
+                  visible: false // Initially hide the group layer
+              });
+   
+              // Create the map with the MediaLayer on top and GroupLayer underneath
+              const map = new Map({
+                  basemap: {
+                      portalItem: {
+                          id: "eb303185d14e45e9be8bbbc1c0daf7ab"
+                      }
+                  },
+                  layers: [layerGroup, mediaLayer] // Place layerGroup underneath mediaLayer
+              });
+   
+              // Create the 2D MapView
+              const view = new MapView({
+                  container: "viewDiv",
+                  map: map,
+                  center: [-80, 40],
+                  zoom: 3
+              });
+   
+              // Add LayerList widget to view layers in UI
+              const layerList = new LayerList({
+                  view,
+                  listItemCreatedFunction: (event) => {
+                      const item = event.item;
+                      if (item.layer === mediaLayer) {
+                          // Add opacity slider for MediaLayer
+                          const slider = new Slider({
+                              min: 0,
+                              max: 1,
+                              precision: 2,
+                              values: [1],
+                              visibleElements: {
+                                  labels: true,
+                                  rangeLabels: true
+                              }
+                          });
+   
+                          slider.on("thumb-drag", (event) => {
+                              const { value } = event;
+                              item.layer.opacity = value;
+                          });
+   
+                          item.panel = {
+                              content: slider,
+                              className: "esri-icon-sliders-horizontal",
+                              title: "Endre lagets opasitet",
+                              open: true
+                          };
+                      }
+                  }
+              });
+   
+              view.ui.add(layerList, "top-right");
+   
+              // Add TimeSlider widget for controlling time-enabled layers
+              const timeSlider = new TimeSlider({
+                  container: "timeSliderDiv",
+                  view: view,
+                  mode: "time-window",
+                  fullTimeExtent: {
+                      start: new Date(2017, 7, 8),  // August 8, 2017
+                      end: new Date(2017, 8, 2)      // September 2, 2017
+                  },
+                  stops: {
+                      interval: {
+                          value: 1,
+                          unit: "days"
+                      }
+                  }
+              });
+   
+              view.ui.add(timeSlider, "bottom-left");
+   
+              // Apply time filtering via TimeSlider for the Wind Swath layer
+              windSwathLayer.load().then(() => {
+                  if (windSwathLayer.timeInfo) {
+                      console.log("Vindsvømm FeatureLayer er tid-aktivert");
+   
+                      timeSlider.watch("timeExtent", (timeExtent) => {
+                          const startTime = timeExtent.start.toISOString();
+                          const endTime = timeExtent.end.toISOString();
+                          windSwathLayer.definitionExpression = `Startdate <= '${startTime}' AND Enddate >= '${endTime}'`;
+                      });
+                  }
+              }).catch(err => {
+                  console.error("Feil ved lasting av Vindsvømm FeatureLayer: ", err);
+              });
+   
+              // Function to automatically advance TimeSlider
+              let currentDate = new Date(2017, 7, 8);
+              const startDate = new Date(2017, 7, 8);
+              const endDate = new Date(2017, 8, 2);
+              const videoResetDate = new Date(2017, 8, 1); // Reset date for video feed to September 1, 2017
+              const displayStartDate = new Date(2017, 7, 11); // Layers display start date
+   
+              function advanceTime() {
+                  if (currentDate <= endDate) {
+                      timeSlider.timeExtent = {
+                          start: currentDate,
+                          end: new Date(currentDate.getTime() + (24 * 60 * 60 * 1000))  // One day later
+                      };
+                      currentDate.setDate(currentDate.getDate() + 1);
+                  }
+   
+                  // Reset the video feed to the start date once it reaches September 1
+                  if (currentDate > videoResetDate) {
+                      currentDate = new Date(startDate);  // Reset to August 8, 2017
+                  }
+   
+                  // Control visibility of layers based on the current date
+                  if (currentDate >= displayStartDate) {
+                      layerGroup.visible = true; // Show layers after August 10, 2017
+                  } else {
+                      layerGroup.visible = false; // Hide layers before August 10, 2017
+                  }
+              }
+   
+              // Start advancing TimeSlider after 2.7 seconds and advance every 1.5 seconds
+              setTimeout(() => {
+                  setInterval(advanceTime, 1500);  // Move one day every 1.5 seconds
+              }, 2700);  // Wait 2.7 seconds before starting
+   
+              // Create and add Legend widget for the layer group
+              const legend = new Legend({
+                  view,
+                  layerInfos: [{
+                      layer: layerGroup,
+                      title: "" // Legend title in Norwegian
+                  }]
+              });
+   
+              // Add the Legend to the UI
+              view.ui.add(legend, "bottom-right"); // Add legend to bottom-right
+          });
+  </script>
+  </body>
